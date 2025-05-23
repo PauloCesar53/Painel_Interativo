@@ -24,7 +24,6 @@ static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último event
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
-uint16_t eventosProcessados = 0;
 uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
 // ISR do botão A (incrementa o semáforo de contagem)
@@ -34,6 +33,7 @@ void vTaskEntrada(uint gpio, uint32_t events)
     xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
 // ISR do botão B (decrementa o semáforo de contagem)
 void vTaskSaida(uint gpio, uint32_t events)
 {
@@ -61,21 +61,26 @@ void vContadorTask(void *params)
             
             qtAtualPessoas=uxSemaphoreGetCount(xContadorSem);
             // Atualiza display com a nova contagem
-            ssd1306_fill(&ssd, 0);
+            ssd1306_fill(&ssd, 0);//limpa o display 
             sprintf(buffer, "QtPessoas: %d", qtAtualPessoas);
             //ssd1306_draw_string(&ssd, "Evento ", 5, 10);
             //ssd1306_draw_string(&ssd, "recebido!", 5, 19);
-            ssd1306_draw_string(&ssd, buffer, 5, 44);
+            ssd1306_draw_string(&ssd, buffer, 13, 31);
+            ssd1306_draw_string(&ssd, "Cont. acesso", 15, 4);
+            ssd1306_draw_string(&ssd, "Max:10 pessoas", 7, 13);
+            if(qtAtualPessoas==0){
+                ssd1306_draw_string(&ssd, " Sala Vazia", 7, 49);
+            }else if(qtAtualPessoas==10){
+                ssd1306_draw_string(&ssd, " Sala Cheia", 7, 49);
+            }else{
+                ssd1306_draw_string(&ssd, " Sala ocupada", 7, 49);
+            }
+            ssd1306_rect(&ssd, 3, 3, 122, 60, 1, 0); // Desenha um retângulo
+            ssd1306_line(&ssd, 3, 22, 123, 22, 1);           // Desenha uma linha
             ssd1306_send_data(&ssd);
-
-            // Simula tempo de processamento
+             // Simula tempo de processamento
             vTaskDelay(pdMS_TO_TICKS(1500));
 
-            // Retorna à tela de espera
-            ssd1306_fill(&ssd, 0);
-            ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-            ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-            ssd1306_send_data(&ssd);
         //}
     }
 }
