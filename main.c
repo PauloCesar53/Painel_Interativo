@@ -14,6 +14,10 @@
 #define I2C_SCL 15
 #define ENDERECO 0x3C
 
+#define LED_GREEN 11
+#define LED_BLUE 12
+#define LED_RED  13
+
 #define BOTAO_A 5 
 #define BOTAO_B 6 
 #define BOTAO_JOY 22
@@ -42,16 +46,10 @@ void vTaskSaida(uint gpio, uint32_t events)
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-// Tarefa que consome eventos e mostra no display
+// Tarefa que consome mostra dados no Display 
 void vContadorTask(void *params)
 {
     char buffer[32];
-
-    // Tela inicial
-    ssd1306_fill(&ssd, 0);
-    ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
-    ssd1306_draw_string(&ssd, "  evento...", 5, 34);
-    ssd1306_send_data(&ssd);
 
     while (true)
     {
@@ -85,6 +83,49 @@ void vContadorTask(void *params)
     }
 }
 
+void vLedTask(void *params)//Liga lEDs  RGB dependendo da quantidade de pessoas 
+{
+    //definindo LED vermelho 
+    gpio_init(LED_RED);
+    gpio_set_dir(LED_RED , GPIO_OUT);
+    //definindo LED azul 
+    gpio_init(LED_BLUE);
+    gpio_set_dir(LED_BLUE , GPIO_OUT);
+    //definindo LED verde
+    gpio_init(LED_GREEN);
+    gpio_set_dir(LED_GREEN , GPIO_OUT);
+
+    //garante que LEDs iniciem apagados 
+    gpio_put(LED_RED, 0);
+    gpio_put(LED_GREEN, 0);
+    gpio_put(LED_BLUE, 0);
+
+    while (true)
+    {
+        if (uxSemaphoreGetCount(xContadorSem)==0)
+        { // nenhuama pessoa no ambiente acende azul 
+            gpio_put(LED_BLUE, 1);
+        }
+        else if (uxSemaphoreGetCount(xContadorSem)>0 && uxSemaphoreGetCount(xContadorSem)<=6)
+        { //entre 1 e 6(max-2) pessoas no ambiente, acende LED verde
+            gpio_put(LED_GREEN, 1);
+        }
+        else if (uxSemaphoreGetCount(xContadorSem)==7)
+        { // 7 pessoas(máx-1) no ambiente, acende amarelo 
+            gpio_put(LED_RED, 1);
+            gpio_put(LED_GREEN, 1);
+        }
+        else if(uxSemaphoreGetCount(xContadorSem)==8)
+        {//8 pessoas no ambiente(maximo) acende LED vermelho
+            gpio_put(LED_RED, 1);
+        }
+        vTaskDelay(pdMS_TO_TICKS(50)); // Atualiza a cada 50ms
+        //apaga os LEDs para próxima verificação 
+        gpio_put(LED_RED, 0);
+        gpio_put(LED_GREEN, 0);
+        gpio_put(LED_BLUE, 0);
+    }
+}
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events)
 {
@@ -139,11 +180,12 @@ int main()
     //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
 
 
-    // Cria semáforo de contagem (máximo 10, inicial 0)
-    xContadorSem = xSemaphoreCreateCounting(10, 0);
+    // Cria semáforo de contagem (máximo 8, inicial 0)
+    xContadorSem = xSemaphoreCreateCounting(8, 0);
 
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
