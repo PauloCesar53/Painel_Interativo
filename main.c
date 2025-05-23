@@ -2,6 +2,7 @@
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
+#include "hardware/pwm.h"
 #include "lib/ssd1306.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -18,13 +19,17 @@
 #define LED_BLUE 12
 #define LED_RED  13
 
+#define buzzer 21// pino do Buzzer na BitDogLab
+
 #define BOTAO_A 5 
 #define BOTAO_B 6 
 #define BOTAO_JOY 22
+
+uint BeepCurto=1;//variável auiliar para beep com ambiente em capacidade máxima
+
 static volatile uint32_t last_time_A = 0; // Armazena o tempo do último evento para Bot A(em microssegundos)
 static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento para Bot B(em microssegundos)
 static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último evento para Bot JOY(em microssegundos)
-
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
@@ -77,7 +82,7 @@ void vContadorTask(void *params)
             ssd1306_line(&ssd, 3, 22, 123, 22, 1);           // Desenha uma linha
             ssd1306_send_data(&ssd);
              // Simula tempo de processamento
-            vTaskDelay(pdMS_TO_TICKS(1500));
+            //vTaskDelay(pdMS_TO_TICKS(50));
 
         //}
     }
@@ -138,12 +143,41 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
     {
         last_time_A = current_time; // Atualiza o tempo do último evento
+        if(qtAtualPessoas==8){
+            BeepCurto=0;
+        }
         vTaskEntrada(gpio, events);
     }
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
         reset_usb_boot(0, 0);
+    }
+}
+
+void vBuzzerTask(void *params)//alerta com Buzzer sonoro 
+{
+    //configurando PWM
+    uint pwm_wrap = 1999;// definindo valor de wrap referente a 12 bits do ADC
+    gpio_set_function(buzzer, GPIO_FUNC_PWM);
+    uint slice_num = pwm_gpio_to_slice_num(buzzer);
+    pwm_set_wrap(slice_num, pwm_wrap);
+    pwm_set_clkdiv(slice_num, 75.0);//divisor de clock 
+    pwm_set_enabled(slice_num, true);               // Ativa PWM
+    while (true)
+    {
+        printf("BeepCurto %d",BeepCurto);//verificação mudança de estado no serial monitor
+        if(BeepCurto==0) // para Beep com sala cheia
+        {
+            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pwm_set_gpio_level(buzzer, 0);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pwm_set_gpio_level(buzzer, 0);
+            BeepCurto=1; // muda estado
+        }
     }
 }
 
@@ -186,6 +220,7 @@ int main()
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
