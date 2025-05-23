@@ -14,8 +14,13 @@
 #define I2C_SCL 15
 #define ENDERECO 0x3C
 
-#define BOTAO_A 5 // Gera evento
-#define BOTAO_B 6 // BOOTSEL
+#define BOTAO_A 5 
+#define BOTAO_B 6 
+#define BOTAO_JOY 22
+static volatile uint32_t last_time_A = 0; // Armazena o tempo do último evento para Bot A(em microssegundos)
+static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento para Bot B(em microssegundos)
+static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último evento para Bot JOY(em microssegundos)
+
 
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
@@ -70,13 +75,21 @@ void vContadorTask(void *params)
 // ISR para BOOTSEL e botão de evento
 void gpio_irq_handler(uint gpio, uint32_t events)
 {
-    if (gpio == BOTAO_B)
+    uint32_t current_time = to_us_since_boot(get_absolute_time());// Obtém o tempo atual em microssegundos
+    if (gpio_get(BOTAO_B)==0 && (current_time - last_time_B) > 200000)//200 ms de debounce como condição 
     {
-        reset_usb_boot(0, 0);
+        last_time_B = current_time; // Atualiza o tempo do último evento
+        
     }
-    else if (gpio == BOTAO_A)
+    else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
     {
+        last_time_A = current_time; // Atualiza o tempo do último evento
         gpio_callback(gpio, events);
+    }
+    else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
+    {
+        last_time_JOY = current_time; // Atualiza o tempo do último evento
+        reset_usb_boot(0, 0);
     }
 }
 
@@ -103,8 +116,14 @@ int main()
     gpio_set_dir(BOTAO_B, GPIO_IN);
     gpio_pull_up(BOTAO_B);
 
+    gpio_init(BOTAO_JOY);
+    gpio_set_dir(BOTAO_JOY, GPIO_IN);
+    gpio_pull_up(BOTAO_JOY);
+
     gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled_with_callback(BOTAO_JOY, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+
 
     // Cria semáforo de contagem (máximo 10, inicial 0)
     xContadorSem = xSemaphoreCreateCounting(10, 0);
