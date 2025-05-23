@@ -28,16 +28,14 @@ uint16_t eventosProcessados = 0;
 uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
 // ISR do botão A (incrementa o semáforo de contagem)
-void gpio_callback_A(uint gpio, uint32_t events)
+void vTaskEntrada(uint gpio, uint32_t events)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    if (uxSemaphoreGetCount(xContadorSem) < 10) { // Só incrementa se < 10
-        xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
-    }
+    xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
-// ISR do botão B (incrementa o semáforo de contagem)
-void gpio_callback_B(uint gpio, uint32_t events)
+// ISR do botão B (decrementa o semáforo de contagem)
+void vTaskSaida(uint gpio, uint32_t events)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     xSemaphoreTakeFromISR(xContadorSem, &xHigherPriorityTaskWoken);
@@ -89,12 +87,12 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     if (gpio_get(BOTAO_B)==0 && (current_time - last_time_B) > 200000)//200 ms de debounce como condição 
     {
         last_time_B = current_time; // Atualiza o tempo do último evento
-        gpio_callback_B(gpio, events);
+        vTaskSaida(gpio, events);
     }
     else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
     {
         last_time_A = current_time; // Atualiza o tempo do último evento
-        gpio_callback_A(gpio, events);
+        vTaskEntrada(gpio, events);
     }
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
@@ -141,7 +139,6 @@ int main()
 
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-
     vTaskStartScheduler();
     panic_unsupported();
 }
