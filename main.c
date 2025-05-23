@@ -25,12 +25,22 @@ static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último event
 ssd1306_t ssd;
 SemaphoreHandle_t xContadorSem;
 uint16_t eventosProcessados = 0;
+uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
 // ISR do botão A (incrementa o semáforo de contagem)
-void gpio_callback(uint gpio, uint32_t events)
+void gpio_callback_A(uint gpio, uint32_t events)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
+    if (uxSemaphoreGetCount(xContadorSem) < 10) { // Só incrementa se < 10
+        xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
+    }
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+// ISR do botão B (incrementa o semáforo de contagem)
+void gpio_callback_B(uint gpio, uint32_t events)
+{
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreTakeFromISR(xContadorSem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
@@ -48,15 +58,15 @@ void vContadorTask(void *params)
     while (true)
     {
         // Aguarda semáforo (um evento)
-        if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE)
-        {
-            eventosProcessados++;
-
+        /*if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE)
+        {*/
+            
+            qtAtualPessoas=uxSemaphoreGetCount(xContadorSem);
             // Atualiza display com a nova contagem
             ssd1306_fill(&ssd, 0);
-            sprintf(buffer, "Eventos: %d", eventosProcessados);
-            ssd1306_draw_string(&ssd, "Evento ", 5, 10);
-            ssd1306_draw_string(&ssd, "recebido!", 5, 19);
+            sprintf(buffer, "QtPessoas: %d", qtAtualPessoas);
+            //ssd1306_draw_string(&ssd, "Evento ", 5, 10);
+            //ssd1306_draw_string(&ssd, "recebido!", 5, 19);
             ssd1306_draw_string(&ssd, buffer, 5, 44);
             ssd1306_send_data(&ssd);
 
@@ -68,7 +78,7 @@ void vContadorTask(void *params)
             ssd1306_draw_string(&ssd, "Aguardando ", 5, 25);
             ssd1306_draw_string(&ssd, "  evento...", 5, 34);
             ssd1306_send_data(&ssd);
-        }
+        //}
     }
 }
 
@@ -79,12 +89,12 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     if (gpio_get(BOTAO_B)==0 && (current_time - last_time_B) > 200000)//200 ms de debounce como condição 
     {
         last_time_B = current_time; // Atualiza o tempo do último evento
-        
+        gpio_callback_B(gpio, events);
     }
     else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
     {
         last_time_A = current_time; // Atualiza o tempo do último evento
-        gpio_callback(gpio, events);
+        gpio_callback_A(gpio, events);
     }
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
@@ -121,8 +131,9 @@ int main()
     gpio_pull_up(BOTAO_JOY);
 
     gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled_with_callback(BOTAO_JOY, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+    //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
 
 
     // Cria semáforo de contagem (máximo 10, inicial 0)
