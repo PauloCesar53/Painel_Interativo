@@ -25,7 +25,8 @@
 #define BOTAO_B 6 
 #define BOTAO_JOY 22
 
-uint BeepCurto=1;//variável auiliar para beep com ambiente em capacidade máxima
+uint BeepDuplo=1;//variável auiliar para beep duplo ao acionar Botão JOY
+uint BeepUnico=1;//variável auiliar para beep único ao acionar entrar ambiente cheio 
 
 static volatile uint32_t last_time_A = 0; // Armazena o tempo do último evento para Bot A(em microssegundos)
 static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento para Bot B(em microssegundos)
@@ -161,14 +162,17 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
     {
         last_time_A = current_time; // Atualiza o tempo do último evento
-        if(qtAtualPessoas==8){
-            BeepCurto=0;
+        if(qtAtualPessoas==8)
+        {
+            BeepUnico=0;
         }
+
         vTaskEntrada(gpio, events);
     }
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
+        BeepDuplo=0;
         gpio_callback(gpio, events);
         vTaskReset(gpio,events);
     }
@@ -185,8 +189,8 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
     pwm_set_enabled(slice_num, true);               // Ativa PWM
     while (true)
     {
-        printf("BeepCurto %d",BeepCurto);//verificação mudança de estado no serial monitor
-        if(BeepCurto==0) // para Beep com sala cheia
+        printf("------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
+        if(BeepDuplo==0) // para Beep duplo do Botão JOY
         {
             pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -195,7 +199,14 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
             pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
             vTaskDelay(pdMS_TO_TICKS(50));
             pwm_set_gpio_level(buzzer, 0);
-            BeepCurto=1; // muda estado
+            BeepDuplo=1; // muda estado
+        }
+        if(BeepUnico==0) // para Beep único com sala cheia
+        {
+            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pwm_set_gpio_level(buzzer, 0);
+            BeepUnico=1; // muda estado
         }
     }
 }
