@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.13)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -27,6 +26,8 @@ target_link_libraries(${PROJECT_NAME}
         hardware_gpio
         hardware_i2c
         hardware_adc
+        hardware_pwm
+        hardware_pio
         FreeRTOS-Kernel 
         FreeRTOS-Kernel-Heap4
         )

@@ -10,6 +10,29 @@
 #include "pico/bootrom.h"
 #include "stdio.h"
 
+//matriz led
+#include "hardware/pio.h"
+#include "ws2812.pio.h"
+#define IS_RGBW false
+#define NUM_PIXELS 25
+#define Frames 10
+#define WS2812_PIN 7
+
+// Variável global para armazenar a cor (Entre 0 e 255 para intensidade)
+uint8_t led_r = 5;  // Intensidade do vermelho
+uint8_t led_g = 5; // Intensidade do verde
+uint8_t led_b = 5; // Intensidade do azul 
+
+bool led_buffer[NUM_PIXELS];// Variável (protótipo)
+// Frames que formam os números de 0 a 9
+bool buffer_Numeros[Frames][NUM_PIXELS];//armazena números de zero a nove
+void atualiza_buffer(bool buffer[], bool b[][NUM_PIXELS], int c); ///protótipo função que atualiza buffer
+
+//protótipo funções que ligam leds da matriz 5x5
+static inline void put_pixel(uint32_t pixel_grb);
+static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b);
+void set_one_led(uint8_t r, uint8_t g, uint8_t b);//liga os LEDs escolhidos 
+
 #define I2C_PORT i2c1
 #define I2C_SDA 14
 #define I2C_SCL 15
@@ -70,7 +93,40 @@ void vTaskReset(uint gpio, uint32_t events)
         xQueueReset(xContadorSem); // Reinicia o semáforo para o valor inicial (0)
     }
 }
-
+void vMatrizTask()//task pra Matriz LEDs
+{
+    //configuração PIO
+    PIO pio = pio0;
+    int sm = 0;
+    uint offset = pio_add_program(pio, &ws2812_program);
+    ws2812_program_init(pio, sm, offset, WS2812_PIN, 800000, IS_RGBW);
+    while (true)
+    {
+        if (uxSemaphoreGetCount(xContadorSem)==0)
+        { // nenhuama pessoa no ambiente acende azul 
+            led_b = 5;
+        }
+        else if (uxSemaphoreGetCount(xContadorSem)>0 && uxSemaphoreGetCount(xContadorSem)<=6)
+        { //entre 1 e 6(max-2) pessoas no ambiente, acende LED verde
+            led_g = 5;
+        }
+        else if (uxSemaphoreGetCount(xContadorSem)==7)
+        { // 7 pessoas(máx-1) no ambiente, acende amarelo 
+            led_r = 5;  
+            led_g = 5; 
+        }
+        else if(uxSemaphoreGetCount(xContadorSem)==8)
+        {//8 pessoas no ambiente(maximo) acende LED vermelho
+            led_r = 5;
+        }
+        atualiza_buffer(led_buffer, buffer_Numeros, qtAtualPessoas); /// atualiza buffer        
+        set_one_led(led_r, led_g, led_b); 
+        vTaskDelay(pdMS_TO_TICKS(100));
+        led_r = 0;  
+        led_g = 0; 
+        led_b = 0;    
+    }
+}
 
 // Tarefa que consome mostra dados no Display 
 void vDisplayTask(void *params)
@@ -252,6 +308,63 @@ int main()
     xTaskCreate(vDisplayTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vMatrizTask, "Matriz Task", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
+}
+
+//-----------------Funções para matriz LEDs---------------------------
+bool led_buffer[NUM_PIXELS]= { //Buffer para armazenar quais LEDs estão ligados matriz 5x5
+    1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0};
+static inline void put_pixel(uint32_t pixel_grb)
+{
+    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);
+}
+static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b)
+{
+    return ((uint32_t)(r) << 8) | ((uint32_t)(g) << 16) | (uint32_t)(b);
+}
+void set_one_led(uint8_t r, uint8_t g, uint8_t b)
+{
+    // Define a cor com base nos parâmetros fornecidos
+    uint32_t color = urgb_u32(r, g, b);
+
+    // Define todos os LEDs com a cor especificada
+    for (int i = 0; i < NUM_PIXELS; i++)
+    {
+        if (led_buffer[i])
+        {
+            put_pixel(color); // Liga o LED com um no buffer
+        }
+        else
+        {
+            put_pixel(0); // Desliga os LEDs com zero no buffer
+        }
+    }
+}
+bool buffer_Numeros[Frames][NUM_PIXELS] =//armazena numeros de zero a nove
+    {
+      //{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24} referência para posição na BitDogLab matriz 5x5
+        {0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0}, // para o número zero
+        {0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0}, // para o número 1
+        {0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0}, // para o número 2
+        {0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0}, // para o número 3
+        {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0}, // para o número 4
+        {0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0}, // para o número 5
+        {0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0}, // para o número 6
+        {0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0}, // para o número 7
+        {0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0}, // para o número 8
+        {0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0}  // para o número 9
+};
+// função que atualiza o buffer de acordo o número de 0 a 9
+void atualiza_buffer(bool buffer[],bool b[][NUM_PIXELS], int c)
+{
+    for (int i = 0; i < NUM_PIXELS; i++)
+    {
+        buffer[i] = b[c][i];
+    }
 }
