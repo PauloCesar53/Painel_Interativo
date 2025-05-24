@@ -48,7 +48,7 @@ void set_one_led(uint8_t r, uint8_t g, uint8_t b);//liga os LEDs escolhidos
 #define BOTAO_B 6 
 #define BOTAO_JOY 22
 
-uint BeepDuplo=1;//variável auiliar para beep duplo ao acionar Botão JOY
+uint BeepDuplo=pdTRUE;//variável auiliar para beep duplo ao acionar Botão JOY
 uint BeepUnico=1;//variável auiliar para beep único ao acionar entrar ambiente cheio 
 
 static volatile uint32_t last_time_A = 0; // Armazena o tempo do último evento para Bot A(em microssegundos)
@@ -128,23 +128,18 @@ void vMatrizTask()//task pra Matriz LEDs
     }
 }
 
-// Tarefa que consome mostra dados no Display 
+// Tarefa que mostra dados no Display 
 void vDisplayTask(void *params)
 {
     char buffer[32];
-
     while (true)
     {
         // Aguarda mutex ficar disponível para entrar mo if
         if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY==pdTRUE))
         {
-            
             qtAtualPessoas=uxSemaphoreGetCount(xContadorSem);
-            // Atualiza display com a nova contagem
             ssd1306_fill(&ssd, 0);//limpa o display 
             sprintf(buffer, "QtPessoas: %d", qtAtualPessoas);
-            //ssd1306_draw_string(&ssd, "Evento ", 5, 10);
-            //ssd1306_draw_string(&ssd, "recebido!", 5, 19);
             ssd1306_draw_string(&ssd, buffer, 13, 31);
             ssd1306_draw_string(&ssd, "Cont. acesso", 15, 4);
             ssd1306_draw_string(&ssd, "Max:10 pessoas", 7, 13);
@@ -228,7 +223,7 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
-        BeepDuplo=0;
+        BeepDuplo=pdFALSE;
         gpio_callback(gpio, events);
         vTaskReset(gpio,events);
     }
@@ -246,7 +241,7 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
     while (true)
     {
         printf("--------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
-        if(BeepDuplo==0) // para Beep duplo do Botão JOY
+        if(BeepDuplo==pdFALSE) // para Beep duplo do Botão JOY
         {
             pwm_set_gpio_level(buzzer, 200); //liga buzzer
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -255,7 +250,7 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
             pwm_set_gpio_level(buzzer, 200); //liga buzzer
             vTaskDelay(pdMS_TO_TICKS(50));
             pwm_set_gpio_level(buzzer, 0);//desliga buzzer
-            BeepDuplo=1; // muda estado
+            BeepDuplo=pdTRUE; // muda estado
         }
         if(BeepUnico==0) // para Beep único com sala cheia
         {
