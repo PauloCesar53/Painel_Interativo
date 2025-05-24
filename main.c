@@ -94,7 +94,7 @@ void vDisplayTask(void *params)
             ssd1306_draw_string(&ssd, "Max:10 pessoas", 7, 13);
             if(qtAtualPessoas==0){
                 ssd1306_draw_string(&ssd, " Sala Vazia", 7, 49);
-            }else if(qtAtualPessoas==10){
+            }else if(qtAtualPessoas==8){
                 ssd1306_draw_string(&ssd, " Sala Cheia", 7, 49);
             }else{
                 ssd1306_draw_string(&ssd, " Sala ocupada", 7, 49);
@@ -189,23 +189,23 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
     pwm_set_enabled(slice_num, true);               // Ativa PWM
     while (true)
     {
-        printf("------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
+        printf("--------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
         if(BeepDuplo==0) // para Beep duplo do Botão JOY
         {
-            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            pwm_set_gpio_level(buzzer, 200); //liga buzzer
             vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);
+            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
             vTaskDelay(pdMS_TO_TICKS(100));
-            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            pwm_set_gpio_level(buzzer, 200); //liga buzzer
             vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);
+            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
             BeepDuplo=1; // muda estado
         }
         if(BeepUnico==0) // para Beep único com sala cheia
         {
-            pwm_set_gpio_level(buzzer, 400); // 10% de Duty cycle
+            pwm_set_gpio_level(buzzer, 200);//liga buzzer
             vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);
+            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
             BeepUnico=1; // muda estado
         }
     }
