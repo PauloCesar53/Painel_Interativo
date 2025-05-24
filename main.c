@@ -32,8 +32,11 @@ static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento 
 static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último evento para Bot JOY(em microssegundos)
 
 ssd1306_t ssd;
+
 SemaphoreHandle_t xContadorSem;//semáforo de contagem 
 SemaphoreHandle_t xButtonSem;//semáforo binário 
+
+SemaphoreHandle_t xDisplayMutex;//cria mutex para proteger display 
 uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
 // ISR do botão A (incrementa o semáforo de contagem)
@@ -69,15 +72,15 @@ void vTaskReset(uint gpio, uint32_t events)
 
 
 // Tarefa que consome mostra dados no Display 
-void vContadorTask(void *params)
+void vDisplayTask(void *params)
 {
     char buffer[32];
 
     while (true)
     {
-        // Aguarda semáforo (um evento)
-        /*if (xSemaphoreTake(xContadorSem, portMAX_DELAY) == pdTRUE)
-        {*/
+        // Aguarda mutex ficar disponível para entrar mo if
+        if (xSemaphoreTake(xDisplayMutex, portMAX_DELAY==pdTRUE))
+        {
             
             qtAtualPessoas=uxSemaphoreGetCount(xContadorSem);
             // Atualiza display com a nova contagem
@@ -98,10 +101,8 @@ void vContadorTask(void *params)
             ssd1306_rect(&ssd, 3, 3, 122, 60, 1, 0); // Desenha um retângulo
             ssd1306_line(&ssd, 3, 22, 123, 22, 1);           // Desenha uma linha
             ssd1306_send_data(&ssd);
-             // Simula tempo de processamento
-            //vTaskDelay(pdMS_TO_TICKS(50));
-
-        //}
+            xSemaphoreGive(xDisplayMutex);
+        }
     }
 }
 
@@ -232,11 +233,12 @@ int main()
     //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
 
     xContadorSem = xSemaphoreCreateCounting(8, 0);// Cria semáforo de contagem (máximo 8, inicial 0)
-
     xButtonSem = xSemaphoreCreateBinary();// Cria semáforo binário
 
+    // Cria o mutex do para proteção do display
+    xDisplayMutex = xSemaphoreCreateMutex();
     // Cria tarefa
-    xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vDisplayTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
