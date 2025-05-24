@@ -32,7 +32,8 @@ static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento 
 static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último evento para Bot JOY(em microssegundos)
 
 ssd1306_t ssd;
-SemaphoreHandle_t xContadorSem;
+SemaphoreHandle_t xContadorSem;//semáforo de contagem 
+SemaphoreHandle_t xButtonSem;//semáforo binário 
 uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
 // ISR do botão A (incrementa o semáforo de contagem)
@@ -50,6 +51,22 @@ void vTaskSaida(uint gpio, uint32_t events)
     xSemaphoreTakeFromISR(xContadorSem, &xHigherPriorityTaskWoken);
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
+// ISR do botão JOY semáforo binário 
+void gpio_callback(uint gpio, uint32_t events) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;  //Nenhum contexto de tarefa foi despertado
+    xSemaphoreGiveFromISR(xButtonSem, &xHigherPriorityTaskWoken);    //Libera o semáforo
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // Troca o contexto da tarefa
+}
+// Task ISR do botão JOY (zera contador do semáforo)
+void vTaskReset(uint gpio, uint32_t events)
+{
+    if (xSemaphoreTake(xButtonSem, portMAX_DELAY) == pdTRUE)//verifica se semáforo binário está disponível 
+    {
+        xQueueReset(xContadorSem); // Reinicia o semáforo para o valor inicial (0)
+    }
+}
+
 
 // Tarefa que consome mostra dados no Display 
 void vContadorTask(void *params)
@@ -151,7 +168,8 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
-        reset_usb_boot(0, 0);
+        gpio_callback(gpio, events);
+        vTaskReset(gpio,events);
     }
 }
 
@@ -213,9 +231,9 @@ int main()
     gpio_set_irq_enabled_with_callback(BOTAO_JOY, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
 
+    xContadorSem = xSemaphoreCreateCounting(8, 0);// Cria semáforo de contagem (máximo 8, inicial 0)
 
-    // Cria semáforo de contagem (máximo 8, inicial 0)
-    xContadorSem = xSemaphoreCreateCounting(8, 0);
+    xButtonSem = xSemaphoreCreateBinary();// Cria semáforo binário
 
     // Cria tarefa
     xTaskCreate(vContadorTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
