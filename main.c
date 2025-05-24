@@ -142,7 +142,7 @@ void vDisplayTask(void *params)
             sprintf(buffer, "QtPessoas: %d", qtAtualPessoas);
             ssd1306_draw_string(&ssd, buffer, 13, 31);
             ssd1306_draw_string(&ssd, "Cont. acesso", 15, 4);
-            ssd1306_draw_string(&ssd, "Max:10 pessoas", 7, 13);
+            ssd1306_draw_string(&ssd, "Max: 8 pessoas", 7, 13);
             if(qtAtualPessoas==0){
                 ssd1306_draw_string(&ssd, " Sala Vazia", 7, 49);
             }else if(qtAtualPessoas==8){
