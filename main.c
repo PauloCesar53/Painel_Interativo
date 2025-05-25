@@ -48,9 +48,6 @@ void set_one_led(uint8_t r, uint8_t g, uint8_t b);//liga os LEDs escolhidos
 #define BOTAO_B 6 
 #define BOTAO_JOY 22
 
-uint BeepDuplo=pdTRUE;//variável auiliar para beep duplo ao acionar Botão JOY
-uint BeepUnico=1;//variável auiliar para beep único ao acionar entrar ambiente cheio 
-
 static volatile uint32_t last_time_A = 0; // Armazena o tempo do último evento para Bot A(em microssegundos)
 static volatile uint32_t last_time_B = 0; // Armazena o tempo do último evento para Bot B(em microssegundos)
 static volatile uint32_t last_time_JOY = 0; // Armazena o tempo do último evento para Bot JOY(em microssegundos)
@@ -73,7 +70,10 @@ void vTaskEntrada(void *params)
                 xSemaphoreGive(xContadorSem);//incrementa contador do semáforo 
                 if(qtAtualPessoas==8)
                 {
-                    BeepUnico=0;
+                    //Beep único ao tentar entrar com ambiennte cheio 
+                    pwm_set_gpio_level(buzzer, 200);//liga buzzer
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    pwm_set_gpio_level(buzzer, 0);//desliga buzzer
                 }
             }
             while(gpio_get(BOTAO_A) == 0); // Espera soltar o botão
@@ -81,7 +81,6 @@ void vTaskEntrada(void *params)
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
-
 //Task botão B (decrementa o semáforo de contagem)
 void vTaskSaida(void *params)// uint gpio, uint32_t events
 {
@@ -96,7 +95,6 @@ void vTaskSaida(void *params)// uint gpio, uint32_t events
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
-
 // ISR do botão JOY semáforo binário 
 void gpio_callback(uint gpio, uint32_t events) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;  //Nenhum contexto de tarefa foi despertado
@@ -106,9 +104,17 @@ void gpio_callback(uint gpio, uint32_t events) {
 // Task  do botão JOY (zera contador do semáforo)
 void vTaskReset(void *params) {
     while (true) {
-        if (xSemaphoreTake(xButtonSem, portMAX_DELAY) == pdTRUE) 
+        if (xSemaphoreTake(xButtonSem, portMAX_DELAY) == pdTRUE) //berifica se semáforo binário está disponível
         {
             xQueueReset(xContadorSem); // Reinicia o semáforo para o valor inicial (0)
+            //Beep duplo ao resetar semáforo de contagem 
+            pwm_set_gpio_level(buzzer, 200); //liga buzzer
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
+            vTaskDelay(pdMS_TO_TICKS(100));
+            pwm_set_gpio_level(buzzer, 200); //liga buzzer
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
         }
     }
 }
@@ -139,7 +145,7 @@ void vMatrizTask()//task pra Matriz LEDs
             led_r = 5;
         }
         atualiza_buffer(led_buffer, buffer_Numeros, qtAtualPessoas); /// atualiza buffer        
-        set_one_led(led_r, led_g, led_b); 
+        set_one_led(led_r, led_g, led_b); //imprime número de pessoas no ambiente 
         vTaskDelay(pdMS_TO_TICKS(100));
         led_r = 0;  
         led_g = 0; 
@@ -176,7 +182,6 @@ void vDisplayTask(void *params)
         }
     }
 }
-
 void vLedTask(void *params)//Liga lEDs  RGB dependendo da quantidade de pessoas 
 {
     //definindo LED vermelho 
@@ -227,45 +232,9 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
-        BeepDuplo=pdFALSE;
-        gpio_callback(gpio, events);
-        //vTaskReset(gpio,events);
+        gpio_callback(gpio, events);//função para semáforo binário 
     }
 }
-
-void vBuzzerTask(void *params)//alerta com Buzzer sonoro 
-{
-    //configurando PWM
-    uint pwm_wrap = 1999;// definindo valor de wrap referente a 12 bits do ADC
-    gpio_set_function(buzzer, GPIO_FUNC_PWM);
-    uint slice_num = pwm_gpio_to_slice_num(buzzer);
-    pwm_set_wrap(slice_num, pwm_wrap);
-    pwm_set_clkdiv(slice_num, 75.0);//divisor de clock 
-    pwm_set_enabled(slice_num, true);               // Ativa PWM
-    while (true)
-    {
-        //printf("--------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
-        if(BeepDuplo==pdFALSE) // para Beep duplo do Botão JOY
-        {
-            pwm_set_gpio_level(buzzer, 200); //liga buzzer
-            vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
-            vTaskDelay(pdMS_TO_TICKS(100));
-            pwm_set_gpio_level(buzzer, 200); //liga buzzer
-            vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
-            BeepDuplo=pdTRUE; // muda estado
-        }
-        if(BeepUnico==0) // para Beep único com sala cheia
-        {
-            pwm_set_gpio_level(buzzer, 200);//liga buzzer
-            vTaskDelay(pdMS_TO_TICKS(50));
-            pwm_set_gpio_level(buzzer, 0);//desliga buzzer
-            BeepUnico=1; // muda estado
-        }
-    }
-}
-
 int main()
 {
     stdio_init_all();
@@ -280,6 +249,14 @@ int main()
     ssd1306_config(&ssd);
     ssd1306_send_data(&ssd);
 
+    //configurando PWM
+    uint pwm_wrap = 1999;// definindo valor de wrap referente a 12 bits do ADC
+    gpio_set_function(buzzer, GPIO_FUNC_PWM);
+    uint slice_num = pwm_gpio_to_slice_num(buzzer);
+    pwm_set_wrap(slice_num, pwm_wrap);
+    pwm_set_clkdiv(slice_num, 75.0);//divisor de clock 
+    pwm_set_enabled(slice_num, true);// Ativa PWM
+
     // Configura os botões
     gpio_init(BOTAO_A);
     gpio_set_dir(BOTAO_A, GPIO_IN);
@@ -293,10 +270,10 @@ int main()
     gpio_set_dir(BOTAO_JOY, GPIO_IN);
     gpio_pull_up(BOTAO_JOY);
 
-    //gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    //gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled_with_callback(BOTAO_JOY, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+    gpio_set_irq_enabled(BOTAO_A, GPIO_IRQ_EDGE_FALL, true);
+    gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
+
 
     xContadorSem = xSemaphoreCreateCounting(8, 0);// Cria semáforo de contagem (máximo 8, inicial 0)
     xButtonSem = xSemaphoreCreateBinary();// Cria semáforo binário
@@ -304,13 +281,12 @@ int main()
     // Cria o mutex do para proteção do display
     xDisplayMutex = xSemaphoreCreateMutex();
     // Cria tarefa
+    xTaskCreate(vTaskSaida, "Task Saida", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);//Task obrigatória
+    xTaskCreate(vTaskEntrada,"Task Entrada", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);//Task obrigatória
+    xTaskCreate(vTaskReset,"Task Reset", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);//Task obrigatória
     xTaskCreate(vDisplayTask, "ContadorTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vMatrizTask, "Matriz Task", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vTaskSaida, "Task Saida", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vTaskEntrada,"Task Entrada", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vTaskReset,"Task Reset", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
