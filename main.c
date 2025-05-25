@@ -103,12 +103,13 @@ void gpio_callback(uint gpio, uint32_t events) {
     xSemaphoreGiveFromISR(xButtonSem, &xHigherPriorityTaskWoken);    //Libera o semáforo
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // Troca o contexto da tarefa
 }
-// Task ISR do botão JOY (zera contador do semáforo)
-void vTaskReset(uint gpio, uint32_t events)
-{
-    if (xSemaphoreTake(xButtonSem, portMAX_DELAY) == pdTRUE)//verifica se semáforo binário está disponível 
-    {
-        xQueueReset(xContadorSem); // Reinicia o semáforo para o valor inicial (0)
+// Task  do botão JOY (zera contador do semáforo)
+void vTaskReset(void *params) {
+    while (true) {
+        if (xSemaphoreTake(xButtonSem, portMAX_DELAY) == pdTRUE) 
+        {
+            xQueueReset(xContadorSem); // Reinicia o semáforo para o valor inicial (0)
+        }
     }
 }
 void vMatrizTask()//task pra Matriz LEDs
@@ -228,7 +229,7 @@ void gpio_irq_handler(uint gpio, uint32_t events)
         last_time_JOY = current_time; // Atualiza o tempo do último evento
         BeepDuplo=pdFALSE;
         gpio_callback(gpio, events);
-        vTaskReset(gpio,events);
+        //vTaskReset(gpio,events);
     }
 }
 
@@ -243,7 +244,7 @@ void vBuzzerTask(void *params)//alerta com Buzzer sonoro
     pwm_set_enabled(slice_num, true);               // Ativa PWM
     while (true)
     {
-        printf("--------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
+        //printf("--------------Controle de acesso----------------\n");//verificação mudança de estado no serial monitor
         if(BeepDuplo==pdFALSE) // para Beep duplo do Botão JOY
         {
             pwm_set_gpio_level(buzzer, 200); //liga buzzer
@@ -308,7 +309,8 @@ int main()
     xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vMatrizTask, "Matriz Task", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vTaskSaida, "Task Saida", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vTaskEntrada, "Task Entrada", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskEntrada,"Task Entrada", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskReset,"Task Reset", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
