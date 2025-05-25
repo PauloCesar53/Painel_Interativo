@@ -63,20 +63,38 @@ SemaphoreHandle_t xButtonSem;//semáforo binário
 SemaphoreHandle_t xDisplayMutex;//cria mutex para proteger display 
 uint16_t qtAtualPessoas = 0;//guarda quantidade atual de pessoas 
 
-// ISR do botão A (incrementa o semáforo de contagem)
-void vTaskEntrada(uint gpio, uint32_t events)
+//Task botão A (incrementa o semáforo de contagem)
+void vTaskEntrada(void *params)
 {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(xContadorSem, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    while(true) {
+        if(gpio_get(BOTAO_A) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(70)); //70 ms de Debounce
+            if(gpio_get(BOTAO_A) == 0) {
+                xSemaphoreGive(xContadorSem);//incrementa contador do semáforo 
+                if(qtAtualPessoas==8)
+                {
+                    BeepUnico=0;
+                }
+            }
+            while(gpio_get(BOTAO_A) == 0); // Espera soltar o botão
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 }
 
-// ISR do botão B (decrementa o semáforo de contagem)
-void vTaskSaida(uint gpio, uint32_t events)
+//Task botão B (decrementa o semáforo de contagem)
+void vTaskSaida(void *params)// uint gpio, uint32_t events
 {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreTakeFromISR(xContadorSem, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    while(true) {
+        if(gpio_get(BOTAO_B) == 0) {
+            vTaskDelay(pdMS_TO_TICKS(70)); //70 ms de Debounce
+            if(gpio_get(BOTAO_B) == 0) {
+                xSemaphoreTake(xContadorSem, portMAX_DELAY);//decrementa contador do semáforo 
+            }
+            while(gpio_get(BOTAO_B) == 0); // Espera soltar o botão
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 }
 
 // ISR do botão JOY semáforo binário 
@@ -205,22 +223,7 @@ void vLedTask(void *params)//Liga lEDs  RGB dependendo da quantidade de pessoas
 void gpio_irq_handler(uint gpio, uint32_t events)
 {
     uint32_t current_time = to_us_since_boot(get_absolute_time());// Obtém o tempo atual em microssegundos
-    if (gpio_get(BOTAO_B)==0 && (current_time - last_time_B) > 200000)//200 ms de debounce como condição 
-    {
-        last_time_B = current_time; // Atualiza o tempo do último evento
-        vTaskSaida(gpio, events);
-    }
-    else if (gpio_get(BOTAO_A)==0 && (current_time - last_time_A) > 200000)//200 ms de debounce como condição 
-    {
-        last_time_A = current_time; // Atualiza o tempo do último evento
-        if(qtAtualPessoas==8)
-        {
-            BeepUnico=0;
-        }
-
-        vTaskEntrada(gpio, events);
-    }
-    else if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
+    if(gpio_get(BOTAO_JOY)==0 && (current_time - last_time_JOY) > 200000)//200 ms de debounce como condição 
     {
         last_time_JOY = current_time; // Atualiza o tempo do último evento
         BeepDuplo=pdFALSE;
@@ -289,8 +292,8 @@ int main()
     gpio_set_dir(BOTAO_JOY, GPIO_IN);
     gpio_pull_up(BOTAO_JOY);
 
-    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-    gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    //gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    //gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled_with_callback(BOTAO_JOY, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     //gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
 
@@ -304,6 +307,8 @@ int main()
     xTaskCreate(vLedTask, "TaskLEDsRGB", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vBuzzerTask, "TaskBuzzer", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vMatrizTask, "Matriz Task", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskSaida, "Task Saida", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vTaskEntrada, "Task Entrada", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     vTaskStartScheduler();
     panic_unsupported();
 }
